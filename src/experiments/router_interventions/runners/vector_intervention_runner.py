@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional, Sequence
 
 import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 
 from ..core import (
     ExperimentConfig,
@@ -19,7 +19,7 @@ from ..core import (
     TokenDistributionComparator,
     confusion_matrix_top_k,
 )
-from ..core.data import TextListBatchLoader, WikitextBatchLoader
+from ..core.data import TextListBatchLoader, WikitextBatchLoader, WikitextTitlesBatchLoader
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +30,13 @@ VALID_INTERVENTIONS = ("project_out", "inject", "subtract")
 def _make_batch_loader(config: ExperimentConfig, tokenizer: Any) -> BatchLoader:
     if config.dataset == "wikitext":
         return WikitextBatchLoader(
+            tokenizer,
+            num_samples=config.num_samples,
+            seq_len=config.seq_len,
+            batch_size=config.batch_size,
+        )
+    if config.dataset == "wikitext_titles":
+        return WikitextTitlesBatchLoader(
             tokenizer,
             num_samples=config.num_samples,
             seq_len=config.seq_len,
@@ -116,12 +123,16 @@ def run_vector_intervention_experiment(
     ``confusion_top_k`` controls the size of the saved confusion matrix (default 2, Mixtral's expert top-k).
     """
     tokenizer = AutoTokenizer.from_pretrained(config.model_id)
-    model = AutoModelForCausalLM.from_pretrained(
-        config.model_id,
-        device_map="auto",
-        torch_dtype=torch.bfloat16,
-        low_cpu_mem_usage=False,
-    )
+    if tokenizer.pad_token_id is None:
+        tokenizer.pad_token_id = tokenizer.eos_token_id
+    load_kwargs: dict = {"low_cpu_mem_usage": False}
+    if config.load_in_8bit:
+        load_kwargs["quantization_config"] = BitsAndBytesConfig(load_in_8bit=True)
+    else:
+        load_kwargs["torch_dtype"] = torch.bfloat16
+    model = AutoModelForCausalLM.from_pretrained(config.model_id, **load_kwargs)
+    if torch.cuda.is_available():
+        model = model.to("cuda")
 
     if batch_loader is not None:
         data_loader = batch_loader
@@ -146,7 +157,7 @@ def run_vector_intervention_experiment(
     if len(expert_vectors) == 0:
         raise RuntimeError("No SVD vectors loaded. Check svd_dir and file names.")
 
-    evaluator = LossEvaluator(model)
+    evaluator = LossEvaluator(model, pad_token_id=tokenizer.pad_token_id)
     results: Dict[str, Any] = {
         "config": {
             **vars(config),

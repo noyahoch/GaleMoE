@@ -53,9 +53,9 @@ class RouterManager:
             if loaded.is_meta:
                 raise RuntimeError(
                     "Gate weights still on meta after state_dict(). "
-                    "Try loading the model with low_cpu_mem_usage=False and device_map=None (single device)."
+                    "Try loading the model with low_cpu_mem_usage=False."
                 )
-            # Put onto same device as the gate's module (for device_map="auto")
+            # Put onto same device as the rest of the model
             target_device = next(self.model.parameters()).device
             self._gate.weight.data = loaded.clone().to(target_device, dtype=loaded.dtype)
             w = self._gate.weight.data

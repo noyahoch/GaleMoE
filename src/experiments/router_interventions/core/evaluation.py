@@ -8,11 +8,18 @@ import torch.nn.functional as F
 
 
 class LossEvaluator:
-    """Evaluates mean causal LM loss over batches (labels = input_ids)."""
+    """Evaluates mean causal LM loss over batches (labels = input_ids).
+    If pad_token_id is set, positions with that id are ignored in the loss (set to -100).
+    """
 
-    def __init__(self, model: torch.nn.Module) -> None:
+    def __init__(
+        self,
+        model: torch.nn.Module,
+        pad_token_id: int | None = None,
+    ) -> None:
         self.model = model
         self._device = next(model.parameters()).device
+        self._pad_token_id = pad_token_id
 
     @torch.no_grad()
     def evaluate(self, batches: List[torch.Tensor]) -> float:
@@ -21,7 +28,10 @@ class LossEvaluator:
         losses: List[float] = []
         for batch in batches:
             batch = batch.to(self._device)
-            out = self.model(input_ids=batch, labels=batch)
+            labels = batch.clone()
+            if self._pad_token_id is not None:
+                labels[batch == self._pad_token_id] = -100
+            out = self.model(input_ids=batch, labels=labels)
             losses.append(out.loss.item())
         return sum(losses) / len(losses) if losses else 0.0
 

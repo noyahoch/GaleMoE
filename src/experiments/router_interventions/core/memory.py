@@ -50,7 +50,7 @@ def require_gpu_memory_gib(need_gib: float, label: str = "Operation") -> bool:
     if free < need_gib:
         logger.warning(
             "%s needs ~%.2f GiB but only ~%.2f GiB free (total=%.2f GiB, allocated=%.2f GiB). "
-            "Try smaller batch_size/seq_len/num_samples or use device_map='auto' without --use-single-device.",
+            "Try smaller batch_size/seq_len/num_samples.",
             label, need_gib, free, total, allocated,
         )
         return False

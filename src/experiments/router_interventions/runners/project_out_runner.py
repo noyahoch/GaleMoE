@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 
 from ..core import (
     ExperimentConfig,
@@ -17,8 +17,8 @@ from ..core import (
     ExpertVectors,
     VectorIntervention,
 )
-from ..core.data import TextListBatchLoader, WikitextBatchLoader
-from ..core.memory import log_gpu_memory, require_gpu_memory_gib
+from ..core.data import TextListBatchLoader, WikitextBatchLoader, WikitextTitlesBatchLoader
+from ..core.memory import log_gpu_memory
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +40,13 @@ class ProjectOutRunner:
     def _make_batch_loader(self, tokenizer: "AutoTokenizer") -> BatchLoader:
         if self.config.dataset == "wikitext":
             return WikitextBatchLoader(
+                tokenizer,
+                num_samples=self.config.num_samples,
+                seq_len=self.config.seq_len,
+                batch_size=self.config.batch_size,
+            )
+        if self.config.dataset == "wikitext_titles":
+            return WikitextTitlesBatchLoader(
                 tokenizer,
                 num_samples=self.config.num_samples,
                 seq_len=self.config.seq_len,
@@ -102,28 +109,17 @@ class ProjectOutRunner:
         otherwise stores in results['results'] (backward compatible).
         """
         tokenizer = AutoTokenizer.from_pretrained(self.config.model_id)
+        if tokenizer.pad_token_id is None:
+            tokenizer.pad_token_id = tokenizer.eos_token_id
         log_gpu_memory("Before model load")
 
-        load_kwargs: dict = {
-            "torch_dtype": torch.bfloat16,
-            "low_cpu_mem_usage": False,
-        }
-        if self.config.use_single_device:
-            load_kwargs["device_map"] = None
+        load_kwargs: dict = {"low_cpu_mem_usage": False}
+        if self.config.load_in_8bit:
+            load_kwargs["quantization_config"] = BitsAndBytesConfig(load_in_8bit=True)
         else:
-            load_kwargs["device_map"] = "auto"
+            load_kwargs["torch_dtype"] = torch.bfloat16
         model = AutoModelForCausalLM.from_pretrained(self.config.model_id, **load_kwargs)
-
-        if self.config.use_single_device and torch.cuda.is_available():
-            # bf16: 2 bytes per param; add ~10% for activations/overhead
-            num_params = sum(p.numel() for p in model.parameters())
-            need_gib = (num_params * 2 * 1.1) / (1024**3)
-            if not require_gpu_memory_gib(need_gib, "Model on GPU"):
-                logger.warning(
-                    "Model has ~%.0fM params, needs ~%.1f GiB. "
-                    "Drop --use-single-device to use device_map='auto' (multi-GPU or CPU offload).",
-                    num_params / 1e6, need_gib,
-                )
+        if torch.cuda.is_available():
             model = model.to("cuda")
         log_gpu_memory("After model load")
 
@@ -141,7 +137,7 @@ class ProjectOutRunner:
             _ = model(first_batch.to(device))
         log_gpu_memory("After first forward (batches loaded)")
 
-        evaluator = LossEvaluator(model)
+        evaluator = LossEvaluator(model, pad_token_id=tokenizer.pad_token_id)
         k_values = self._k_values_to_run()
         multi_k = len(k_values) > 1
 

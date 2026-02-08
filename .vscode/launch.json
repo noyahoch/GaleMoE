@@ -1,36 +1,69 @@
 {
-    // Use IntelliSense to learn about possible attributes.
-    // Hover to view descriptions of existing attributes.
-    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
     "version": "0.2.0",
     "configurations": [
-
         {
             "name": "Python Debugger: Current File",
             "type": "debugpy",
             "request": "launch",
             "program": "${file}",
-            "console": "integratedTerminal"
+            "console": "integratedTerminal",
             "env": {
-                "PYTHONPATH": "/workspace/GaleMoE"
+                "PYTHONPATH": "${workspaceFolder}"
             }
-        },      {
-            "name": "Ablate Router",
+        },
+        {
+            "name": "Router: Project out",
             "type": "debugpy",
             "request": "launch",
-            "program": "main2.py",
+            "module": "src.experiments.router_interventions.run_project_out",
             "console": "integratedTerminal",
             "args": [
-                "--svd_dir",
-                "./svd_cache",
-                "--layer_idx",
-                "9",
-                "--output_file",
-                "results_layer5.json",
-                "--num_samples","10"
+                "--svd_dir", "./svd_cache",
+                "--layer_idx", "9",
+                "--output_file", "results_project_out.json",
+                "--num_samples", "200",
+                "--seq-len", "64",
+                "--batch-size", "4",
+                "--dataset", "wikitext_titles"
             ],
             "env": {
-                "PYTHONPATH": "/workspace/GaleMoE"
+                "PYTHONPATH": "${workspaceFolder}"
+            }
+        },
+        {
+            "name": "Router: Project out (low memory)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "src.experiments.router_interventions.run_project_out",
+            "console": "integratedTerminal",
+            "args": [
+                "--svd_dir", "./svd_cache",
+                "--layer_idx", "9",
+                "--output_file", "results_project_out.json",
+                "--num_samples", "200",
+                "--seq-len", "32",
+                "--batch-size", "64",
+                "--dataset", "wikitext_titles",
+                "--load-in-8bit"
+            ],
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            }
+        },
+        {
+            "name": "Router: Vector interventions",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "src.experiments.router_interventions.run_vector_interventions",
+            "console": "integratedTerminal",
+            "args": [
+                "--svd_dir", "./svd_cache",
+                "--layer_idx", "9",
+                "--output_file", "results_vector_interventions.json",
+                "--num_samples", "10"
+            ],
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
             }
         }
     ]

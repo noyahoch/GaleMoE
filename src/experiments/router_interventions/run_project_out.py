@@ -28,7 +28,7 @@ def main() -> None:
     parser.add_argument("--model-id", type=str, default="mistralai/Mixtral-8x7B-v0.1")
     parser.add_argument("--model-tag", type=str, default="mistralai_Mixtral_8x7B_v0.1")
     parser.add_argument("--num-experts", type=int, default=8)
-    parser.add_argument("--seq-len", type=int, default=512)
+    parser.add_argument("--seq-len", type=int, default=64)
     parser.add_argument("--batch-size", type=int, default=4)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument(
@@ -41,8 +41,8 @@ def main() -> None:
         "--dataset",
         type=str,
         default="wikitext",
-        choices=("wikitext", "text"),
-        help="Dataset: wikitext or text (use --text-file)",
+        choices=("wikitext", "wikitext_titles", "text"),
+        help="Dataset: wikitext (long chunks), wikitext_titles (one short seq per title; use with --seq-len 32 --batch-size 2000), or text (--text-file)",
     )
     parser.add_argument(
         "--text-file",
@@ -58,9 +58,9 @@ def main() -> None:
         help="Top singular vector count(s) to project out: single int or comma-separated list (e.g. 1,2,4,8). Default: 1",
     )
     parser.add_argument(
-        "--use-single-device",
+        "--load-in-8bit",
         action="store_true",
-        help="Load model on a single GPU (no device_map). Use if you get 'meta tensor' errors; requires model to fit on one device.",
+        help="Load model in 8-bit (BitsAndBytes). Matches gate-hook; halves weight memory. Requires: pip install bitsandbytes",
     )
 
     args = parser.parse_args()
@@ -88,7 +88,7 @@ def main() -> None:
         dataset=args.dataset,
         text_file=args.text_file,
         top_k=top_k,
-        use_single_device=args.use_single_device,
+        load_in_8bit=args.load_in_8bit,
     )
 
     run_project_out_experiment(cfg)
