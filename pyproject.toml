@@ -19,4 +19,7 @@ dependencies = [
     "torch>=2.9.1",
     "torchvision>=0.24.1",
     "transformers>=4.57.3",
+    # Hub dataset scripts (e.g. allenai/peS2o) require datasets 3.x; 4.0+ removed script support.
+    "datasets>=3.1.0,<4",
+    "wandb"
 ]

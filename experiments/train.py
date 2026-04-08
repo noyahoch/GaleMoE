@@ -12,6 +12,10 @@ import os
 import sys
 
 import torch
+try:
+    import wandb as _wandb
+except ImportError:
+    _wandb = None
 from torch.optim import AdamW
 from transformers import (
     AutoTokenizer,
@@ -60,6 +64,20 @@ def main():
     condition = getattr(cfg, "condition", "baseline")
     output_dir = cfg.checkpointing.output_dir or f"runs/{condition}"
     os.makedirs(output_dir, exist_ok=True)
+
+    wandb_cfg = getattr(cfg, "wandb", None)
+    wb_run = None
+    if wandb_cfg is not None and getattr(wandb_cfg, "enabled", False):
+        if _wandb is None:
+            print("WARNING: wandb not installed — skipping wandb logging.", flush=True)
+        else:
+            wb_run = _wandb.init(
+                project=getattr(wandb_cfg, "project", "GaleMoE"),
+                name=getattr(wandb_cfg, "run_name", None) or condition,
+                tags=list(getattr(wandb_cfg, "tags", []) or []),
+                config=cfg.to_dict(),
+            )
+            print(f"[wandb] run: {wb_run.url}", flush=True)
 
     dtype  = torch.bfloat16 if cfg.model.dtype == "bfloat16" else torch.float32
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -252,6 +270,12 @@ def main():
                 record["w_gate_grad_norm"] = last_gate_grads["w_gate_grad_norm"]
                 record["w_score_grad_norm"] = last_gate_grads["w_score_grad_norm"]
             logger.log(record)
+            if wb_run is not None:
+                wb_scalars = {
+                    k: v for k, v in record.items()
+                    if isinstance(v, (int, float))
+                }
+                wb_run.log(wb_scalars, step=global_step)
             monitor.reset()
 
             msg = (f"  step {global_step}/{total_micro_steps}  "
@@ -282,6 +306,8 @@ def main():
             print(f"  saved -> {ckpt}")
 
     monitor.remove()
+    if wb_run is not None:
+        wb_run.finish()
     final_path = os.path.join(output_dir, "final")
     model.save_pretrained(final_path)
     tokenizer.save_pretrained(final_path)

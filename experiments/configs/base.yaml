@@ -87,6 +87,12 @@ checkpointing:
   save_every: 5000
   output_dir: null                 # if null, defaults to runs/<condition>
 
+wandb:
+  enabled: false
+  project: GaleMoE
+  run_name: null                   # null → wandb auto-names the run
+  tags: []
+
 # Ignored when condition is baseline (no router swap). Used by gated_random / gated_svd.
 router:
   layers: all                      # "all" or e.g. [0, 8, 15]
