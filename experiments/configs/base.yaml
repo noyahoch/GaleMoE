@@ -1,0 +1,99 @@
+# Base config — shared across all conditions.
+# Condition-specific configs inherit from this by loading base.yaml first,
+# then overriding only what differs.
+#
+# If you run `train.py --config configs/base.yaml` alone, this default applies.
+condition: baseline
+
+model:
+  model_id: allenai/OLMoE-1B-7B-0924
+  dtype: bfloat16                  # bfloat16 | float32
+  # sdpa uses PyTorch scaled_dot_product_attention (Flash/mem-efficient when available).
+  # flash_attention_2 needs flash-attn installed; eager is slowest.
+  attn_implementation: sdpa
+
+training:
+  total_tokens: 30_000_000_000     # budget in tokens — see train.py for opt-step vs micro-batch counts
+  batch_size: 32                    # sequences per forward (one micro-batch)
+  grad_accum: 2                    # micro-batches per optimizer step; tokens/opt-step = batch_size * grad_accum * max_length
+  lr: 5.0e-4
+  warmup_steps: 0
+  max_length: 512
+  grad_clip: 1.0
+  weight_decay: 0.0
+
+  # Which parts of the model to train.
+  # Options:
+  #   all                — train every parameter (full fine-tuning)
+  #   router_only        — freeze everything, train the full gate module in each MoE layer
+  #                        (GatedRouter: both W_score and W_gate)
+  #   router_gate_only   — freeze everything except GatedRouter.W_gate (original W_score frozen).
+  #                        Needs gated_random / gated_svd; useless on baseline.
+  #   layers: [0, 1, 2, ...]  — train only the listed transformer layer indices (+ their routers)
+  trainable: router_only
+
+data:
+  # training mixture (Dolma sources)
+  general_prob: 0.60
+  code_prob: 0.20
+  science_prob: 0.20
+  code_language: python            # data_dir for the-stack-dedup; null = all languages
+  extra_dataset: null              # optional 4th HF dataset path
+  extra_prob: 0.0
+  seed: 42
+  num_workers: 8
+
+  # eval datasets — swap these freely without touching code
+  indist_eval:
+    dataset: allenai/c4            # same source as training general text
+    subset: en
+    split: validation
+    text_col: text
+
+  ood_eval:
+    dataset: ccdv/pubmed-summarization   # medical domain, absent from Dolma
+    subset: null
+    split: test
+    text_col: article
+
+  # Optional third eval stream (same keys as indist_eval). Logged as ppl_extra_eval / expert_freq_*.
+  extra_eval: null
+  # example:
+  # extra_eval:
+  #   tag: wikitext                     # stored in JSONL as extra_eval_tag (for your notes)
+  #   dataset: wikitext
+  #   subset: wikitext-103-raw-v1
+  #   split: validation
+  #   text_col: text
+
+metrics:
+  log_every: 50                    # steps between CV + loss logs
+  # W_gate drift vs init + gate grad norms (JSONL: w_gate_delta_rms, w_gate_grad_norm, …)
+  train_diagnostics: true
+  eval_every: 500                  # steps between held-out PPL + freq histogram logs
+  # Per eval step, each active loader runs eval_batches forward-only passes (no backward).
+  # Rough cost per loader: eval_batches * eval_batch_size * max_length token positions.
+  # e.g. 50 * 4 * 512 ≈ 102k tokens forward per loader; scales linearly with eval_batches.
+  eval_batches: 50                 # batches per eval pass (each loader)
+  eval_batch_size: 4               # batch size for indist / ood / extra_eval loaders only
+  # If > 0, also run PPL + expert_freq on this many train-mixture batches each eval (uses training batch_size).
+  train_eval_batches: 0
+  freq_layers: [0, 8, 15]         # which layers to log full expert-freq histogram
+  # MoE geometry on indist eval only (same eval_batches forwards as ppl_indist); no extra passes.
+  moe_geometry: false
+  moe_geometry_max_tokens_per_expert: 128   # cap for pairwise cos within each expert bucket
+
+checkpointing:
+  save_every: 5000
+  output_dir: null                 # if null, defaults to runs/<condition>
+
+# Ignored when condition is baseline (no router swap). Used by gated_random / gated_svd.
+router:
+  layers: all                      # "all" or e.g. [0, 8, 15]
+  svd_skip: 0
+  svd_k: 256
+  svd_gate_alpha: 1.0             # W_gate_init = alpha * svd_gate_init(...); try 0.01 / 0.05 / 0.1
+  # If true: SVD on (gate_proj - mean over experts in this layer) so directions are idiosyncratic vs shared.
+  svd_residual_mean: true
+  svd_cache: true
+  svd_cache_dir: null              # null → ~/.cache/gale/svd_gate (or XDG_CACHE_HOME)

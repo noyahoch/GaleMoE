@@ -1,0 +1,4 @@
+condition: gated_svd
+
+checkpointing:
+  output_dir: runs/gated_svd_router_only

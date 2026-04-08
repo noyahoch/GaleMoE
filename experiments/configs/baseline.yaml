@@ -1,0 +1,7 @@
+# Condition: baseline
+# Original OLMoE router, no modifications. Continued pretraining on Dolma mixture.
+
+condition: baseline
+
+checkpointing:
+  output_dir: runs/baseline_new

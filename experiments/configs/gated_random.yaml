@@ -1,0 +1,4 @@
+condition: gated_random
+
+checkpointing:
+  output_dir: runs/gated_random_router_only
